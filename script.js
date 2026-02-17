@@ -1,406 +1,549 @@
-document.addEventListener("DOMContentLoaded", function () {
+document.addEventListener("DOMContentLoaded", () => {
 
-    /* =============================
-       DOM ELEMENTS
-    ============================== */
+  /* =============================================
+     HELPERS
+     ============================================= */
 
-    const accountFilter = document.getElementById("accountFilter");
+  const $ = id => document.getElementById(id);
 
-    const totalIncomeEl = document.getElementById("totalIncome");
-    const totalExpenseEl = document.getElementById("totalExpense");
-    const netBalanceEl = document.getElementById("netBalance");
+  /* =============================================
+     DOM REFS
+     ============================================= */
 
-    const transactionList = document.getElementById("transactionList");
-    const creditList = document.getElementById("creditList");
+  const els = {
+    accountFilter:    $("accountFilter"),
+    totalIncome:      $("totalIncome"),
+    totalExpense:     $("totalExpense"),
+    netBalance:       $("netBalance"),
+    balanceHint:      $("balanceHint"),
+    pendingCredit:    $("pendingCredit"),       // dashboard stat
+    pendingCreditTab: $("pendingCreditTab"),    // credit tab stat
+    totalCredit:      $("totalCredit"),
+    receivedCredit:   $("receivedCredit"),
+    transactionList:  $("transactionList"),
+    txEmpty:          $("txEmpty"),
+    recentList:       $("recentList"),
+    recentEmpty:      $("recentEmpty"),
+    creditList:       $("creditList"),
+    creditEmpty:      $("creditEmpty"),
+    exportBtn:        $("exportBtn"),
+    viewAllBtn:       $("viewAllBtn"),
+    themeToggle:      $("themeToggle"),
+    toggleLabel:      $("toggleLabel"),
+    transactionModal: $("transactionModal"),
+    creditModal:      $("creditModal"),
+    transactionForm:  $("transactionForm"),
+    creditForm:       $("creditForm"),
+    toastContainer:   $("toastContainer"),
+    confirmOverlay:   $("confirmOverlay"),
+    confirmMsg:       $("confirmMsg"),
+    confirmOk:        $("confirmOk"),
+    confirmCancel:    $("confirmCancel"),
+  };
 
-    const totalCreditEl = document.getElementById("totalCredit");
-    const pendingCreditEl = document.getElementById("pendingCredit");
-    const receivedCreditEl = document.getElementById("receivedCredit");
+  /* =============================================
+     STATE
+     ============================================= */
 
-    const exportBtn = document.getElementById("exportBtn");
+  let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+  let credits      = JSON.parse(localStorage.getItem("credits"))      || [];
+  let activeFilter = "All";
 
-    const openTransactionBtn = document.getElementById("openTransactionBtn");
-    const closeTransactionBtn = document.getElementById("closeTransactionBtn");
-    const transactionModal = document.getElementById("transactionModal");
+  /* =============================================
+     PERSISTENCE
+     ============================================= */
 
-    const openCreditBtn = document.getElementById("openCreditBtn");
-    const closeCreditBtn = document.getElementById("closeCreditBtn");
-    const creditModal = document.getElementById("creditModal");
+  const save = () => {
+    localStorage.setItem("transactions", JSON.stringify(transactions));
+    localStorage.setItem("credits",      JSON.stringify(credits));
+  };
 
-    const transactionForm = document.getElementById("transactionForm");
-    const creditForm = document.getElementById("creditForm");
+  /* =============================================
+     FORMATTING
+     ============================================= */
 
-    const themeToggle = document.getElementById("themeToggle");
+  const formatINR = n =>
+    "₹\u202f" + Math.abs(n).toLocaleString("en-IN");
 
-    /* =============================
-       DATA
-    ============================== */
+  const today = () =>
+    new Date().toISOString().split("T")[0];
 
-    let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
-    let credits = JSON.parse(localStorage.getItem("credits")) || [];
+  const formatDate = str => {
+    if (!str) return "";
+    const d = new Date(str + "T00:00:00");
+    return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  };
 
-    function saveData() {
-        localStorage.setItem("transactions", JSON.stringify(transactions));
-        localStorage.setItem("credits", JSON.stringify(credits));
-    }
+  /* =============================================
+     ANIMATED COUNTER
+     ============================================= */
 
-    function formatCurrency(amount) {
-        return "₹ " + amount.toLocaleString("en-IN");
-    }
+  const timers = new WeakMap();
 
-    /* =============================
-       ANIMATE NUMBERS
-    ============================== */
+  function animateTo(el, target, duration = 400) {
+    if (timers.has(el)) clearInterval(timers.get(el));
+    const start = parseFloat(el.dataset.cur || 0) || 0;
+    const steps = Math.ceil(duration / 16);
+    const inc   = (target - start) / steps;
+    let cur = start, count = 0;
 
-    function animateValue(element, start, end, duration = 400) {
+    const t = setInterval(() => {
+      count++;
+      cur += inc;
+      if (count >= steps) { cur = target; clearInterval(t); timers.delete(el); }
+      el.dataset.cur = cur;
+      el.textContent = formatINR(Math.round(cur));
+    }, 16);
 
-        const range = end - start;
-        const increment = range / (duration / 16);
-        let current = start;
+    timers.set(el, t);
+  }
 
-        const timer = setInterval(() => {
-            current += increment;
+  /* =============================================
+     TOAST
+     ============================================= */
 
-            if ((increment > 0 && current >= end) ||
-                (increment < 0 && current <= end)) {
-                current = end;
-                clearInterval(timer);
-            }
+  function toast(msg, type = "success") {
+    const icons = { success: "✓", error: "✕", info: "i" };
+    const el = document.createElement("div");
+    el.className = `toast ${type}`;
+    el.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
+    els.toastContainer.appendChild(el);
+    setTimeout(() => {
+      el.classList.add("hide");
+      el.addEventListener("animationend", () => el.remove(), { once: true });
+    }, 3000);
+  }
 
-            element.textContent = formatCurrency(Math.round(current));
-        }, 16);
-    }
+  /* =============================================
+     CONFIRM DIALOG
+     ============================================= */
 
-    /* =============================
-       THEME SYSTEM
-    ============================== */
+  function confirm(msg) {
+    return new Promise(resolve => {
+      els.confirmMsg.textContent = msg;
+      els.confirmOverlay.classList.add("open");
+      const close = result => {
+        els.confirmOverlay.classList.remove("open");
+        els.confirmOk.removeEventListener("click", onOk);
+        els.confirmCancel.removeEventListener("click", onCancel);
+        resolve(result);
+      };
+      const onOk     = () => close(true);
+      const onCancel = () => close(false);
+      els.confirmOk.addEventListener("click",     onOk,     { once: true });
+      els.confirmCancel.addEventListener("click", onCancel, { once: true });
+    });
+  }
 
-    function applyInitialTheme() {
-        const savedTheme = localStorage.getItem("theme");
+  /* =============================================
+     THEME
+     ============================================= */
 
-        if (savedTheme) {
-            document.body.classList.toggle("dark", savedTheme === "dark");
-        } else {
-            const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-            document.body.classList.toggle("dark", prefersDark);
-        }
+  function applyTheme(dark) {
+    document.body.classList.toggle("dark", dark);
+    els.toggleLabel.textContent = dark ? "Dark" : "Light";
+  }
 
-        updateToggleIcon();
-    }
+  function initTheme() {
+    const saved = localStorage.getItem("theme");
+    const sys   = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    applyTheme(saved ? saved === "dark" : sys);
+  }
 
-    function updateToggleIcon() {
-        themeToggle.textContent =
-            document.body.classList.contains("dark") ? "☀️" : "🌙";
-    }
+  els.themeToggle.addEventListener("click", () => {
+    const dark = document.body.classList.toggle("dark");
+    localStorage.setItem("theme", dark ? "dark" : "light");
+    els.toggleLabel.textContent = dark ? "Dark" : "Light";
+  });
 
-    themeToggle.addEventListener("click", function () {
-        document.body.classList.toggle("dark");
-        const currentTheme =
-            document.body.classList.contains("dark") ? "dark" : "light";
-        localStorage.setItem("theme", currentTheme);
-        updateToggleIcon();
+  initTheme();
+
+  /* =============================================
+     TABS
+     ============================================= */
+
+  const tabBtns     = document.querySelectorAll(".tab-btn");
+  const tabContents = document.querySelectorAll(".tab-content");
+
+  function activateTab(name) {
+    tabBtns.forEach(b => {
+      b.classList.toggle("active", b.dataset.tab === name);
+      b.setAttribute("aria-selected", b.dataset.tab === name);
+    });
+    tabContents.forEach(c => c.classList.toggle("active", c.id === name));
+  }
+
+  tabBtns.forEach(btn =>
+    btn.addEventListener("click", () => activateTab(btn.dataset.tab))
+  );
+
+  // "View all" button on dashboard → go to Transactions tab
+  els.viewAllBtn.addEventListener("click", () => activateTab("transactions"));
+
+  /* =============================================
+     FILTER
+     ============================================= */
+
+  els.accountFilter.addEventListener("change", () => {
+    activeFilter = els.accountFilter.value;
+    renderAll();
+  });
+
+  const filtered = arr =>
+    activeFilter === "All" ? arr : arr.filter(i => i.account === activeFilter);
+
+  /* =============================================
+     ENTRY BADGE HELPERS
+     ============================================= */
+
+  const INCOME_TYPES = ["Income", "Sale"];
+
+  const isIncome  = t => INCOME_TYPES.includes(t.type);
+  const badgeClass = t => isIncome(t) ? "badge-income" : "badge-expense";
+  const amtClass   = t => isIncome(t) ? "amount-income" : "amount-expense";
+  const prefix     = t => isIncome(t) ? "+" : "−";
+
+  const INITIALS = { Income: "In", Expense: "Ex", Purchase: "Pu", Sale: "Sa" };
+  const initial  = t => INITIALS[t.type] || t.type[0];
+
+  /* =============================================
+     RENDER DASHBOARD
+     ============================================= */
+
+  function renderDashboard() {
+    let income = 0, expense = 0, pending = 0, given = 0, received = 0;
+
+    filtered(transactions).forEach(t => {
+      isIncome(t) ? (income += t.amount) : (expense += t.amount);
     });
 
-    applyInitialTheme();
-
-    /* =============================
-       FILTER HELPERS
-    ============================== */
-
-    function getSelectedAccount() {
-        return accountFilter.value;
-    }
-
-    function getFilteredTransactions() {
-        const selected = getSelectedAccount();
-        return selected === "All"
-            ? transactions
-            : transactions.filter(t => t.account === selected);
-    }
-
-    function getFilteredCredits() {
-        const selected = getSelectedAccount();
-        return selected === "All"
-            ? credits
-            : credits.filter(c => c.account === selected);
-    }
-
-    /* =============================
-       RENDER TRANSACTIONS
-    ============================== */
-
-    function renderTransactions() {
-
-        transactionList.innerHTML = "";
-
-        let totalIncome = 0;
-        let totalExpense = 0;
-
-        const filtered = getFilteredTransactions();
-
-        filtered.forEach(transaction => {
-
-            const originalIndex = transactions.indexOf(transaction);
-
-            const li = document.createElement("li");
-            li.classList.add("transaction-item");
-
-            const isIncome =
-                transaction.type === "Income" || transaction.type === "Sale";
-
-            if (isIncome) totalIncome += transaction.amount;
-            else totalExpense += transaction.amount;
-
-            li.innerHTML = `
-                <div class="transaction-info">
-                    <span><strong>${transaction.account}</strong> | ${transaction.type} - ${transaction.notes || "No notes"}</span>
-                    <small>${transaction.date}</small>
-                </div>
-                <div>
-                    <span class="transaction-amount">
-                        ${isIncome ? "+" : "-"}${formatCurrency(transaction.amount)}
-                    </span>
-                    <button class="delete-transaction" data-index="${originalIndex}">
-                        Delete
-                    </button>
-                </div>
-            `;
-
-            transactionList.appendChild(li);
-        });
-
-        const net = totalIncome - totalExpense;
-
-        animateValue(totalIncomeEl, 0, totalIncome);
-        animateValue(totalExpenseEl, 0, totalExpense);
-        animateValue(netBalanceEl, 0, net);
-
-        netBalanceEl.classList.toggle("positive", net >= 0);
-        netBalanceEl.classList.toggle("negative", net < 0);
-    }
-
-    /* =============================
-       RENDER CREDITS
-    ============================== */
-
-    function renderCredits() {
-
-        creditList.innerHTML = "";
-
-        let totalGiven = 0;
-        let totalPending = 0;
-        let totalReceived = 0;
-
-        const filtered = getFilteredCredits();
-
-        filtered.forEach(credit => {
-
-            const originalIndex = credits.indexOf(credit);
-
-            totalGiven += credit.amount;
-
-            if (credit.status === "Pending")
-                totalPending += credit.amount;
-            else
-                totalReceived += credit.amount;
-
-            const li = document.createElement("li");
-            li.classList.add("transaction-item");
-
-            li.innerHTML = `
-                <div class="transaction-info">
-                    <span><strong>${credit.customer}</strong> (${credit.account}) - ${credit.notes || ""}</span>
-                    <small>${credit.date} | ${credit.status}</small>
-                </div>
-                <div>
-                    <span class="transaction-amount">
-                        ${formatCurrency(credit.amount)}
-                    </span>
-                    ${
-                        credit.status === "Pending"
-                            ? `<button class="mark-paid" data-index="${originalIndex}">Mark Paid</button>`
-                            : ""
-                    }
-                    <button class="delete-credit" data-index="${originalIndex}">
-                        Delete
-                    </button>
-                </div>
-            `;
-
-            creditList.appendChild(li);
-        });
-
-        animateValue(totalCreditEl, 0, totalGiven);
-        animateValue(pendingCreditEl, 0, totalPending);
-        animateValue(receivedCreditEl, 0, totalReceived);
-    }
-
-    /* =============================
-       ADD TRANSACTION
-    ============================== */
-
-    transactionForm.addEventListener("submit", function (e) {
-        e.preventDefault();
-
-        const account = document.getElementById("account").value;
-        const type = document.getElementById("type").value;
-        const amount = parseFloat(document.getElementById("amount").value);
-        const date = document.getElementById("date").value;
-        const notes = document.getElementById("notes").value;
-
-        if (!account || !type || !amount || amount <= 0 || !date) {
-            alert("Fill all required fields properly.");
-            return;
-        }
-
-        transactions.push({ account, type, amount, date, notes });
-
-        saveData();
-        renderTransactions();
-
-        transactionForm.reset();
-        transactionModal.style.display = "none";
+    filtered(credits).forEach(c => {
+      given += c.amount;
+      c.status === "Pending" ? (pending += c.amount) : (received += c.amount);
     });
 
-    /* =============================
-       ADD CREDIT
-    ============================== */
+    const net = income - expense;
 
-    creditForm.addEventListener("submit", function (e) {
-        e.preventDefault();
+    animateTo(els.totalIncome,   income);
+    animateTo(els.totalExpense,  expense);
+    animateTo(els.pendingCredit, pending);
 
-        const account = document.getElementById("creditAccount").value;
-        const customer = document.getElementById("customerName").value;
-        const amount = parseFloat(document.getElementById("creditAmount").value);
-        const date = document.getElementById("creditDate").value;
-        const notes = document.getElementById("creditNotes").value;
+    // Net balance — override text after animation for sign
+    animateTo(els.netBalance, Math.abs(net));
+    setTimeout(() => {
+      els.netBalance.textContent = (net < 0 ? "−\u202f" : "") + formatINR(net);
+      els.netBalance.className = "balance-amount" +
+        (net > 0 ? " positive" : net < 0 ? " negative" : "");
+      els.balanceHint.textContent = net > 0 ? "Healthy balance ↑" :
+                                    net < 0 ? "Expenses exceed income" : "Break even";
+    }, 420);
 
-        if (!account || !customer || !amount || amount <= 0 || !date) {
-            alert("Fill all required fields properly.");
-            return;
-        }
+    // Recent: last 5 transactions
+    const recent = [...filtered(transactions)].reverse().slice(0, 5);
+    renderEntryList(els.recentList, recent, transactions, "tx", true);
+    els.recentEmpty.hidden = recent.length > 0;
+  }
 
-        credits.push({
-            account,
-            customer,
-            amount,
-            date,
-            notes,
-            status: "Pending"
-        });
+  /* =============================================
+     RENDER ENTRY LIST (shared for tx & recent)
+     ============================================= */
 
-        saveData();
-        renderCredits();
+  function renderEntryList(listEl, items, sourceArr, type, readonly = false) {
+    listEl.innerHTML = "";
 
-        creditForm.reset();
-        creditModal.style.display = "none";
+    items.forEach(item => {
+      const realIdx = sourceArr.indexOf(item);
+      const li = document.createElement("li");
+      li.className = "entry-item";
+
+      li.innerHTML = `
+        <div class="entry-left">
+          <div class="entry-badge ${badgeClass(item)}">${initial(item)}</div>
+          <div class="entry-info">
+            <div class="entry-title">${item.type}${item.notes ? " · " + item.notes : ""}</div>
+            <div class="entry-sub">
+              <span>${item.account}</span><span>·</span><span>${formatDate(item.date)}</span>
+            </div>
+          </div>
+        </div>
+        <div class="entry-right">
+          <span class="entry-amount ${amtClass(item)}">
+            ${prefix(item)} ${formatINR(item.amount)}
+          </span>
+          ${readonly ? "" : `<button class="btn-icon btn-delete js-del-tx" data-index="${realIdx}" aria-label="Delete">✕</button>`}
+        </div>
+      `;
+
+      listEl.appendChild(li);
+    });
+  }
+
+  /* =============================================
+     RENDER TRANSACTIONS TAB
+     ============================================= */
+
+  function renderTransactions() {
+    const items = filtered(transactions);
+    renderEntryList(els.transactionList, items, transactions, "tx", false);
+    els.txEmpty.hidden = items.length > 0;
+  }
+
+  /* =============================================
+     RENDER CREDITS TAB
+     ============================================= */
+
+  function renderCredits() {
+    els.creditList.innerHTML = "";
+
+    let given = 0, pending = 0, received = 0;
+    const items = filtered(credits);
+
+    items.forEach(cr => {
+      const realIdx = credits.indexOf(cr);
+      given    += cr.amount;
+      cr.status === "Pending" ? (pending += cr.amount) : (received += cr.amount);
+
+      const li = document.createElement("li");
+      li.className = "entry-item";
+
+      li.innerHTML = `
+        <div class="entry-left">
+          <div class="entry-badge badge-credit">Cr</div>
+          <div class="entry-info">
+            <div class="entry-title">${cr.customer}${cr.notes ? " · " + cr.notes : ""}</div>
+            <div class="entry-sub">
+              <span>${cr.account}</span><span>·</span><span>${formatDate(cr.date)}</span>
+              <span class="status-badge ${cr.status === "Pending" ? "status-pending" : "status-paid"}">${cr.status}</span>
+            </div>
+          </div>
+        </div>
+        <div class="entry-right">
+          <span class="entry-amount amount-neutral">${formatINR(cr.amount)}</span>
+          ${cr.status === "Pending"
+            ? `<button class="btn-icon btn-paid js-mark-paid" data-index="${realIdx}" aria-label="Mark paid">Paid</button>`
+            : ""}
+          <button class="btn-icon btn-delete js-del-credit" data-index="${realIdx}" aria-label="Delete">✕</button>
+        </div>
+      `;
+
+      els.creditList.appendChild(li);
     });
 
-    /* =============================
-       DELETE & MARK PAID
-    ============================== */
+    animateTo(els.totalCredit,      given);
+    animateTo(els.pendingCreditTab, pending);
+    animateTo(els.receivedCredit,   received);
 
-    document.addEventListener("click", function (e) {
+    els.creditEmpty.hidden = items.length > 0;
+  }
 
-        if (e.target.classList.contains("delete-transaction")) {
-            const index = e.target.dataset.index;
-            if (confirm("Delete this transaction?")) {
-                transactions.splice(index, 1);
-                saveData();
-                renderTransactions();
-            }
-        }
+  /* =============================================
+     RENDER ALL
+     ============================================= */
 
-        if (e.target.classList.contains("delete-credit")) {
-            const index = e.target.dataset.index;
-            if (confirm("Delete this credit entry?")) {
-                credits.splice(index, 1);
-                saveData();
-                renderCredits();
-            }
-        }
-
-        if (e.target.classList.contains("mark-paid")) {
-            const index = e.target.dataset.index;
-            const credit = credits[index];
-
-            credit.status = "Paid";
-
-            transactions.push({
-                account: credit.account,
-                type: "Income",
-                amount: credit.amount,
-                date: new Date().toISOString().split("T")[0],
-                notes: `Credit received from ${credit.customer}`
-            });
-
-            saveData();
-            renderCredits();
-            renderTransactions();
-        }
-    });
-
-    /* =============================
-       EXPORT
-    ============================== */
-
-    exportBtn.addEventListener("click", function () {
-
-        const filtered = getFilteredTransactions();
-
-        if (filtered.length === 0) {
-            alert("No transactions to export.");
-            return;
-        }
-
-        let csv = "Account,Date,Type,Amount,Notes\n";
-
-        filtered.forEach(t => {
-            csv += `${t.account},${t.date},${t.type},${t.amount},"${t.notes || ""}"\n`;
-        });
-
-        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
-
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "digica-transactions.csv";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-    });
-
-    /* =============================
-       MODALS
-    ============================== */
-
-    openTransactionBtn.addEventListener("click", () => {
-        transactionModal.style.display = "flex";
-    });
-
-    closeTransactionBtn.addEventListener("click", () => {
-        transactionModal.style.display = "none";
-    });
-
-    openCreditBtn.addEventListener("click", () => {
-        creditModal.style.display = "flex";
-    });
-
-    closeCreditBtn.addEventListener("click", () => {
-        creditModal.style.display = "none";
-    });
-
-    window.addEventListener("click", function (e) {
-        if (e.target === transactionModal) transactionModal.style.display = "none";
-        if (e.target === creditModal) creditModal.style.display = "none";
-    });
-
-    accountFilter.addEventListener("change", function () {
-        renderTransactions();
-        renderCredits();
-    });
-
+  function renderAll() {
+    renderDashboard();
     renderTransactions();
     renderCredits();
+  }
 
+  /* =============================================
+     FORM VALIDATION
+     ============================================= */
+
+  function clearErrors(ids) {
+    ids.forEach(id => {
+      const err = $(id + "Err"), inp = $(id);
+      if (err) err.textContent = "";
+      if (inp) inp.classList.remove("error");
+    });
+  }
+
+  function setError(id, msg) {
+    const err = $(id + "Err"), inp = $(id);
+    if (err) err.textContent = msg;
+    if (inp) inp.classList.add("error");
+    return false;
+  }
+
+  function validate(rules) {
+    let ok = true;
+    rules.forEach(([id, cond, msg]) => { if (!cond) ok = setError(id, msg); });
+    return ok;
+  }
+
+  /* =============================================
+     ADD TRANSACTION
+     ============================================= */
+
+  els.transactionForm.addEventListener("submit", e => {
+    e.preventDefault();
+    clearErrors(["account", "type", "amount", "date"]);
+
+    const account = $("account").value;
+    const type    = $("type").value;
+    const amount  = parseFloat($("amount").value);
+    const date    = $("date").value;
+    const notes   = $("notes").value.trim();
+
+    if (!validate([
+      ["account", account,    "Select an account."],
+      ["type",    type,       "Select a type."],
+      ["amount",  amount > 0, "Enter a valid amount."],
+      ["date",    date,       "Select a date."],
+    ])) return;
+
+    transactions.push({ account, type, amount, date, notes });
+    save();
+    renderAll();
+
+    els.transactionForm.reset();
+    $("date").value = today();
+    closeModal(els.transactionModal);
+    toast("Transaction added.");
+  });
+
+  /* =============================================
+     ADD CREDIT
+     ============================================= */
+
+  els.creditForm.addEventListener("submit", e => {
+    e.preventDefault();
+    clearErrors(["creditAccount", "customerName", "creditAmount", "creditDate"]);
+
+    const account  = $("creditAccount").value;
+    const customer = $("customerName").value.trim();
+    const amount   = parseFloat($("creditAmount").value);
+    const date     = $("creditDate").value;
+    const notes    = $("creditNotes").value.trim();
+
+    if (!validate([
+      ["creditAccount",  account,    "Select an account."],
+      ["customerName",   customer,   "Enter customer name."],
+      ["creditAmount",   amount > 0, "Enter a valid amount."],
+      ["creditDate",     date,       "Select a date."],
+    ])) return;
+
+    credits.push({ account, customer, amount, date, notes, status: "Pending" });
+    save();
+    renderAll();
+
+    els.creditForm.reset();
+    $("creditDate").value = today();
+    closeModal(els.creditModal);
+    toast("Credit entry added.");
+  });
+
+  /* =============================================
+     EVENT DELEGATION — DELETE & MARK PAID
+     ============================================= */
+
+  document.addEventListener("click", async e => {
+    if (e.target.classList.contains("js-del-tx")) {
+      const idx = +e.target.dataset.index;
+      if (!await confirm("Delete this transaction?")) return;
+      transactions.splice(idx, 1);
+      save(); renderAll();
+      toast("Deleted.", "info");
+    }
+
+    if (e.target.classList.contains("js-del-credit")) {
+      const idx = +e.target.dataset.index;
+      if (!await confirm("Delete this credit entry?")) return;
+      credits.splice(idx, 1);
+      save(); renderAll();
+      toast("Deleted.", "info");
+    }
+
+    if (e.target.classList.contains("js-mark-paid")) {
+      const idx = +e.target.dataset.index;
+      const cr  = credits[idx];
+      cr.status = "Paid";
+      transactions.push({
+        account: cr.account,
+        type:    "Income",
+        amount:  cr.amount,
+        date:    today(),
+        notes:   `Credit received from ${cr.customer}`,
+      });
+      save(); renderAll();
+      toast(`₹${cr.amount.toLocaleString("en-IN")} received from ${cr.customer}.`);
+    }
+  });
+
+  /* =============================================
+     EXPORT CSV
+     ============================================= */
+
+  els.exportBtn.addEventListener("click", () => {
+    const data = filtered(transactions);
+    if (!data.length) { toast("No transactions to export.", "error"); return; }
+
+    const rows = [
+      ["Account", "Date", "Type", "Amount", "Notes"],
+      ...data.map(t => [t.account, t.date, t.type, t.amount, `"${(t.notes || "").replace(/"/g, '""')}"`]),
+    ];
+    const csv  = rows.map(r => r.join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement("a"), {
+      href: url, download: `digica-${today()}.csv`
+    });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast(`${data.length} transaction${data.length > 1 ? "s" : ""} exported.`);
+  });
+
+  /* =============================================
+     MODAL HELPERS
+     ============================================= */
+
+  // Inject close animation keyframe once
+  const s = document.createElement("style");
+  s.textContent = `@keyframes slideDown { from { transform: translateY(0); } to { transform: translateY(100%); } }`;
+  document.head.appendChild(s);
+
+  function openModal(modal) {
+    modal.classList.add("open");
+    modal.style.display = "flex";
+    setTimeout(() => { const f = modal.querySelector("select, input"); if (f) f.focus(); }, 80);
+  }
+
+  function closeModal(modal) {
+    const mc = modal.querySelector(".modal-content");
+    mc.style.animation = "slideDown 0.2s cubic-bezier(0.32, 0.72, 0, 1) both";
+    setTimeout(() => {
+      modal.style.display = "none";
+      modal.classList.remove("open");
+      mc.style.animation = "";
+    }, 190);
+  }
+
+  $("openTransactionBtn").addEventListener("click", () => openModal(els.transactionModal));
+  $("openCreditBtn")     .addEventListener("click", () => openModal(els.creditModal));
+
+  $("closeTransactionBtn") .addEventListener("click", () => closeModal(els.transactionModal));
+  $("closeTransactionBtn2").addEventListener("click", () => closeModal(els.transactionModal));
+  $("closeCreditBtn")      .addEventListener("click", () => closeModal(els.creditModal));
+  $("closeCreditBtn2")     .addEventListener("click", () => closeModal(els.creditModal));
+
+  [els.transactionModal, els.creditModal].forEach(m =>
+    m.addEventListener("click", e => { if (e.target === m) closeModal(m); })
+  );
+
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    if (els.transactionModal.classList.contains("open")) closeModal(els.transactionModal);
+    if (els.creditModal.classList.contains("open"))      closeModal(els.creditModal);
+  });
+
+  /* =============================================
+     INIT
+     ============================================= */
+
+  $("date").value       = today();
+  $("creditDate").value = today();
+
+  renderAll();
 });
