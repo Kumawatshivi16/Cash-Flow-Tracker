@@ -11,6 +11,17 @@
     <div class="container">
         <h1>Cash Flow Tracker</h1>
 
+        <!-- Account Filter -->
+        <div style="margin-bottom:20px;">
+            <label><strong>Select Account:</strong></label>
+            <select id="accountFilter">
+                <option value="All">All Accounts</option>
+                <option value="Personal">Personal</option>
+                <option value="Business">Business</option>
+                <option value="Savings">Savings</option>
+            </select>
+        </div>
+
         <!-- Summary Section -->
         <div class="summary">
             <div class="card income">
@@ -31,6 +42,15 @@
         <div class="form-container">
             <h2>Add Transaction</h2>
             <form id="transactionForm">
+
+                <!-- Account Selection -->
+                <select id="account" required>
+                    <option value="">Select Account</option>
+                    <option value="Personal">Personal</option>
+                    <option value="Business">Business</option>
+                    <option value="Savings">Savings</option>
+                </select>
+
                 <select id="type" required>
                     <option value="">Select Type</option>
                     <option value="Income">Income</option>
@@ -40,9 +60,7 @@
                 </select>
 
                 <input type="number" id="amount" placeholder="Amount" required />
-
                 <input type="date" id="date" required />
-
                 <input type="text" id="notes" placeholder="Notes" />
 
                 <button type="submit">Add Transaction</button>
@@ -53,7 +71,6 @@
         <div class="transactions">
             <h2>Transactions</h2>
 
-            <!-- Export Button -->
             <button id="exportBtn" class="export-btn">
                 Export to CSV
             </button>

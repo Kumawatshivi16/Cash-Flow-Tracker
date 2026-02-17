@@ -6,6 +6,7 @@ const totalIncomeEl = document.getElementById("totalIncome");
 const totalExpenseEl = document.getElementById("totalExpense");
 const netBalanceEl = document.getElementById("netBalance");
 const exportBtn = document.getElementById("exportBtn");
+const accountFilter = document.getElementById("accountFilter");
 
 let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
 
@@ -23,7 +24,14 @@ function renderTransactions() {
     let totalIncome = 0;
     let totalExpense = 0;
 
-    transactions.forEach((transaction, index) => {
+    const selectedAccount = accountFilter.value;
+
+    const filteredTransactions = selectedAccount === "All"
+        ? transactions
+        : transactions.filter(t => t.account === selectedAccount);
+
+    filteredTransactions.forEach((transaction, index) => {
+
         const li = document.createElement("li");
         li.classList.add("transaction-item");
 
@@ -38,14 +46,14 @@ function renderTransactions() {
 
         li.innerHTML = `
             <div class="transaction-info">
-                <span><strong>${transaction.type}</strong> - ${transaction.notes || "No notes"}</span>
+                <span><strong>${transaction.account}</strong> | ${transaction.type} - ${transaction.notes || "No notes"}</span>
                 <small>${transaction.date}</small>
             </div>
             <div>
                 <span class="transaction-amount">
                     ${isIncomeType ? "+" : "-"}${formatCurrency(transaction.amount)}
                 </span>
-                <button class="delete-btn" onclick="deleteTransaction(${index})">
+                <button class="delete-btn" onclick="deleteTransaction(${transactions.indexOf(transaction)})">
                     Delete
                 </button>
             </div>
@@ -72,17 +80,18 @@ function renderTransactions() {
 form.addEventListener("submit", function (e) {
     e.preventDefault();
 
+    const account = document.getElementById("account").value;
     const type = document.getElementById("type").value;
     const amount = parseFloat(document.getElementById("amount").value);
     const date = document.getElementById("date").value;
     const notes = document.getElementById("notes").value;
 
-    if (!amount || amount <= 0) {
-        alert("Please enter a valid amount.");
+    if (!account || !type || !amount || amount <= 0) {
+        alert("Please fill all required fields correctly.");
         return;
     }
 
-    const transaction = { type, amount, date, notes };
+    const transaction = { account, type, amount, date, notes };
 
     transactions.push(transaction);
     saveTransactions();
@@ -98,30 +107,32 @@ window.deleteTransaction = function(index) {
     }
 };
 
-if (exportBtn) {
-    exportBtn.addEventListener("click", function () {
-        if (transactions.length === 0) {
-            alert("No transactions to export.");
-            return;
-        }
+accountFilter.addEventListener("change", renderTransactions);
 
-        let csvContent = "Date,Type,Amount,Notes\n";
+// Export to CSV
+exportBtn.addEventListener("click", function () {
 
-        transactions.forEach(transaction => {
-            csvContent += `${transaction.date},${transaction.type},${transaction.amount},"${transaction.notes || ""}"\n`;
-        });
+    if (transactions.length === 0) {
+        alert("No transactions to export.");
+        return;
+    }
 
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const url = URL.createObjectURL(blob);
+    let csvContent = "Account,Date,Type,Amount,Notes\n";
 
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "cash-flow-data.csv";
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+    transactions.forEach(transaction => {
+        csvContent += `${transaction.account},${transaction.date},${transaction.type},${transaction.amount},"${transaction.notes || ""}"\n`;
     });
-}
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "cash-flow-data.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+});
 
 renderTransactions();
 
