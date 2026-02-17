@@ -3,103 +3,146 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DigiCA - Digital Cash Flow Manager</title>
+    <title>DigiCA - Digital Accounting System</title>
     <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-    <div class="container">
+<div class="container">
 
-        <!-- Branding -->
-        <h1>DigiCA</h1>
-        <p class="tagline">
-            Your simple digital assistant for managing income, expenses and multiple accounts.
-        </p>
+    <!-- Header -->
+    <h1>DigiCA</h1>
+    <p class="tagline">
+        Simple digital accounting for small businesses and professionals.
+    </p>
 
-        <!-- Account Filter -->
-        <div class="account-filter">
-            <label><strong>View Account:</strong></label>
-            <select id="accountFilter">
-                <option value="All">All Accounts</option>
+    <!-- Account Filter -->
+    <div class="account-filter">
+        <label><strong>View Account:</strong></label>
+        <select id="accountFilter">
+            <option value="All">All Accounts</option>
+            <option value="Personal">Personal</option>
+            <option value="Business">Business</option>
+            <option value="Savings">Savings</option>
+        </select>
+    </div>
+
+    <!-- Summary Section -->
+    <div class="summary">
+        <div class="card income">
+            <h3>Total Income</h3>
+            <p id="totalIncome">₹0</p>
+        </div>
+        <div class="card expense">
+            <h3>Total Expense</h3>
+            <p id="totalExpense">₹0</p>
+        </div>
+        <div class="card balance">
+            <h3>Net Balance</h3>
+            <p id="netBalance">₹0</p>
+        </div>
+    </div>
+
+    <!-- Transactions -->
+    <div class="section">
+        <div class="section-header">
+            <h2>Transactions</h2>
+            <button id="exportBtn" class="export-btn">Export CSV</button>
+        </div>
+        <ul id="transactionList"></ul>
+    </div>
+
+    <!-- CREDIT SECTION -->
+    <div class="section credit-section">
+        <h2>Credit (Udhar)</h2>
+
+        <!-- Credit Summary -->
+        <div class="credit-summary">
+            <div class="credit-card">
+                <h4>Total Credit Given</h4>
+                <p id="totalCredit">₹0</p>
+            </div>
+            <div class="credit-card">
+                <h4>Total Pending</h4>
+                <p id="pendingCredit">₹0</p>
+            </div>
+            <div class="credit-card">
+                <h4>Total Received</h4>
+                <p id="receivedCredit">₹0</p>
+            </div>
+        </div>
+
+        <ul id="creditList"></ul>
+    </div>
+
+    <footer class="footer">
+        © 2026 DigiCA | Built by Shivi Kumawat
+    </footer>
+
+</div>
+
+<!-- Floating Buttons -->
+<button id="openTransactionBtn" class="fab blue">+</button>
+<button id="openCreditBtn" class="fab green">₹</button>
+
+<!-- TRANSACTION MODAL -->
+<div class="modal" id="transactionModal">
+    <div class="modal-content">
+        <h2>Add Transaction</h2>
+        <form id="transactionForm">
+
+            <select id="account" required>
+                <option value="">Select Account</option>
                 <option value="Personal">Personal</option>
                 <option value="Business">Business</option>
                 <option value="Savings">Savings</option>
             </select>
-        </div>
 
-        <!-- Summary Section -->
-        <div class="summary">
-            <div class="card income">
-                <h3>Total Income</h3>
-                <p id="totalIncome">₹0</p>
-            </div>
-            <div class="card expense">
-                <h3>Total Expense</h3>
-                <p id="totalExpense">₹0</p>
-            </div>
-            <div class="card balance">
-                <h3>Net Balance</h3>
-                <p id="netBalance">₹0</p>
-            </div>
-        </div>
+            <select id="type" required>
+                <option value="">Select Type</option>
+                <option value="Income">Income</option>
+                <option value="Expense">Expense</option>
+                <option value="Purchase">Purchase</option>
+                <option value="Sale">Sale</option>
+            </select>
 
-        <!-- Transactions Section -->
-        <div class="transactions">
-            <div class="transactions-header">
-                <h2>Transactions</h2>
-                <button id="exportBtn" class="export-btn">
-                    Export CSV
-                </button>
-            </div>
+            <input type="number" id="amount" placeholder="Amount" required />
+            <input type="date" id="date" required />
+            <input type="text" id="notes" placeholder="Notes" />
 
-            <ul id="transactionList"></ul>
-        </div>
+            <button type="submit">Add Transaction</button>
+        </form>
 
-        <!-- Footer -->
-        <footer class="footer">
-            © 2026 DigiCA | Built by Shivi Kumawat
-        </footer>
-
+        <button class="close-btn" id="closeTransactionBtn">Close</button>
     </div>
+</div>
 
-    <!-- Floating Add Button -->
-    <button id="openFormBtn" class="fab">+</button>
+<!-- CREDIT MODAL -->
+<div class="modal" id="creditModal">
+    <div class="modal-content">
+        <h2>Add Credit (Udhar)</h2>
+        <form id="creditForm">
 
-    <!-- Modal Add Transaction -->
-    <div class="modal" id="formModal">
-        <div class="modal-content">
-            <h2>Add Transaction</h2>
+            <select id="creditAccount" required>
+                <option value="">Select Account</option>
+                <option value="Personal">Personal</option>
+                <option value="Business">Business</option>
+                <option value="Savings">Savings</option>
+            </select>
 
-            <form id="transactionForm">
+            <input type="text" id="customerName" placeholder="Customer Name" required />
+            <input type="number" id="creditAmount" placeholder="Amount" required />
+            <input type="date" id="creditDate" required />
+            <input type="text" id="creditNotes" placeholder="Notes (Optional)" />
 
-                <select id="account" required>
-                    <option value="">Select Account</option>
-                    <option value="Personal">Personal</option>
-                    <option value="Business">Business</option>
-                    <option value="Savings">Savings</option>
-                </select>
+            <button type="submit">Add Credit</button>
+        </form>
 
-                <select id="type" required>
-                    <option value="">Select Type</option>
-                    <option value="Income">Income</option>
-                    <option value="Expense">Expense</option>
-                    <option value="Purchase">Purchase</option>
-                    <option value="Sale">Sale</option>
-                </select>
-
-                <input type="number" id="amount" placeholder="Amount" required />
-                <input type="date" id="date" required />
-                <input type="text" id="notes" placeholder="Notes" />
-
-                <button type="submit">Add Transaction</button>
-            </form>
-
-            <button id="closeFormBtn" class="close-btn">
-                Close
-            </button>
-        </div>
+        <button class="close-btn" id="closeCreditBtn">Close</button>
     </div>
+</div>
 
-    <script src="script.js"></script>
+<script src="script.js"></script>
+
 </body>
 </html>

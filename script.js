@@ -1,34 +1,77 @@
 document.addEventListener("DOMContentLoaded", function () {
 
-    const form = document.getElementById("transactionForm");
-    const transactionList = document.getElementById("transactionList");
+    /* =============================
+       DOM ELEMENTS
+    ============================== */
+
+    const accountFilter = document.getElementById("accountFilter");
+
     const totalIncomeEl = document.getElementById("totalIncome");
     const totalExpenseEl = document.getElementById("totalExpense");
     const netBalanceEl = document.getElementById("netBalance");
-    const exportBtn = document.getElementById("exportBtn");
-    const accountFilter = document.getElementById("accountFilter");
 
-    const openFormBtn = document.getElementById("openFormBtn");
-    const closeFormBtn = document.getElementById("closeFormBtn");
-    const formModal = document.getElementById("formModal");
+    const transactionList = document.getElementById("transactionList");
+    const creditList = document.getElementById("creditList");
+
+    const totalCreditEl = document.getElementById("totalCredit");
+    const pendingCreditEl = document.getElementById("pendingCredit");
+    const receivedCreditEl = document.getElementById("receivedCredit");
+
+    const exportBtn = document.getElementById("exportBtn");
+
+    /* Modals */
+    const openTransactionBtn = document.getElementById("openTransactionBtn");
+    const closeTransactionBtn = document.getElementById("closeTransactionBtn");
+    const transactionModal = document.getElementById("transactionModal");
+
+    const openCreditBtn = document.getElementById("openCreditBtn");
+    const closeCreditBtn = document.getElementById("closeCreditBtn");
+    const creditModal = document.getElementById("creditModal");
+
+    const transactionForm = document.getElementById("transactionForm");
+    const creditForm = document.getElementById("creditForm");
+
+    /* =============================
+       DATA
+    ============================== */
 
     let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+    let credits = JSON.parse(localStorage.getItem("credits")) || [];
 
-    function saveTransactions() {
+    function saveData() {
         localStorage.setItem("transactions", JSON.stringify(transactions));
+        localStorage.setItem("credits", JSON.stringify(credits));
     }
 
     function formatCurrency(amount) {
         return "₹ " + amount.toLocaleString("en-IN");
     }
 
-    function getFilteredTransactions() {
-        const selectedAccount = accountFilter.value;
-
-        return selectedAccount === "All"
-            ? transactions
-            : transactions.filter(t => t.account === selectedAccount);
+    function getSelectedAccount() {
+        return accountFilter.value;
     }
+
+    /* =============================
+       FILTER HELPERS
+    ============================== */
+
+    function getFilteredTransactions() {
+        const selected = getSelectedAccount();
+        return selected === "All"
+            ? transactions
+            : transactions.filter(t => t.account === selected);
+    }
+
+    function getFilteredCredits() {
+        const selected = getSelectedAccount();
+        return selected === "All"
+            ? credits
+            : credits.filter(c => c.account === selected);
+    }
+
+    /* =============================
+       RENDER TRANSACTIONS
+    ============================== */
 
     function renderTransactions() {
 
@@ -37,23 +80,20 @@ document.addEventListener("DOMContentLoaded", function () {
         let totalIncome = 0;
         let totalExpense = 0;
 
-        const filteredTransactions = getFilteredTransactions();
+        const filtered = getFilteredTransactions();
 
-        filteredTransactions.forEach((transaction, index) => {
+        filtered.forEach(transaction => {
 
             const originalIndex = transactions.indexOf(transaction);
 
             const li = document.createElement("li");
             li.classList.add("transaction-item");
 
-            const isIncomeType =
+            const isIncome =
                 transaction.type === "Income" || transaction.type === "Sale";
 
-            if (isIncomeType) {
-                totalIncome += transaction.amount;
-            } else {
-                totalExpense += transaction.amount;
-            }
+            if (isIncome) totalIncome += transaction.amount;
+            else totalExpense += transaction.amount;
 
             li.innerHTML = `
                 <div class="transaction-info">
@@ -62,9 +102,9 @@ document.addEventListener("DOMContentLoaded", function () {
                 </div>
                 <div>
                     <span class="transaction-amount">
-                        ${isIncomeType ? "+" : "-"}${formatCurrency(transaction.amount)}
+                        ${isIncome ? "+" : "-"}${formatCurrency(transaction.amount)}
                     </span>
-                    <button class="delete-btn" data-index="${originalIndex}">
+                    <button class="delete-transaction" data-index="${originalIndex}">
                         Delete
                     </button>
                 </div>
@@ -73,24 +113,78 @@ document.addEventListener("DOMContentLoaded", function () {
             transactionList.appendChild(li);
         });
 
-        const netBalance = totalIncome - totalExpense;
+        const net = totalIncome - totalExpense;
 
         totalIncomeEl.textContent = formatCurrency(totalIncome);
         totalExpenseEl.textContent = formatCurrency(totalExpense);
-        netBalanceEl.textContent = formatCurrency(netBalance);
+        netBalanceEl.textContent = formatCurrency(net);
 
-        if (netBalance < 0) {
-            netBalanceEl.classList.add("negative");
-            netBalanceEl.classList.remove("positive");
-        } else {
-            netBalanceEl.classList.add("positive");
-            netBalanceEl.classList.remove("negative");
-        }
+        netBalanceEl.classList.toggle("positive", net >= 0);
+        netBalanceEl.classList.toggle("negative", net < 0);
     }
 
-    /* ===== ADD TRANSACTION ===== */
+    /* =============================
+       RENDER CREDITS
+    ============================== */
 
-    form.addEventListener("submit", function (e) {
+    function renderCredits() {
+
+        creditList.innerHTML = "";
+
+        let totalGiven = 0;
+        let totalPending = 0;
+        let totalReceived = 0;
+
+        const filtered = getFilteredCredits();
+
+        filtered.forEach(credit => {
+
+            const originalIndex = credits.indexOf(credit);
+
+            totalGiven += credit.amount;
+
+            if (credit.status === "Pending") {
+                totalPending += credit.amount;
+            } else {
+                totalReceived += credit.amount;
+            }
+
+            const li = document.createElement("li");
+            li.classList.add("transaction-item");
+
+            li.innerHTML = `
+                <div class="transaction-info">
+                    <span><strong>${credit.customer}</strong> (${credit.account}) - ${credit.notes || ""}</span>
+                    <small>${credit.date} | ${credit.status}</small>
+                </div>
+                <div>
+                    <span class="transaction-amount">
+                        ${formatCurrency(credit.amount)}
+                    </span>
+                    ${
+                        credit.status === "Pending"
+                            ? `<button class="mark-paid" data-index="${originalIndex}">Mark Paid</button>`
+                            : ""
+                    }
+                    <button class="delete-credit" data-index="${originalIndex}">
+                        Delete
+                    </button>
+                </div>
+            `;
+
+            creditList.appendChild(li);
+        });
+
+        totalCreditEl.textContent = formatCurrency(totalGiven);
+        pendingCreditEl.textContent = formatCurrency(totalPending);
+        receivedCreditEl.textContent = formatCurrency(totalReceived);
+    }
+
+    /* =============================
+       ADD TRANSACTION
+    ============================== */
+
+    transactionForm.addEventListener("submit", function (e) {
         e.preventDefault();
 
         const account = document.getElementById("account").value;
@@ -100,85 +194,166 @@ document.addEventListener("DOMContentLoaded", function () {
         const notes = document.getElementById("notes").value;
 
         if (!account || !type || !amount || amount <= 0 || !date) {
-            alert("Please fill all required fields correctly.");
+            alert("Fill all required fields properly.");
             return;
         }
 
-        const transaction = { account, type, amount, date, notes };
+        transactions.push({ account, type, amount, date, notes });
 
-        transactions.push(transaction);
-        saveTransactions();
+        saveData();
         renderTransactions();
-        form.reset();
 
-        // Auto close modal after submit
-        formModal.style.display = "none";
+        transactionForm.reset();
+        transactionModal.style.display = "none";
     });
 
-    /* ===== DELETE TRANSACTION (EVENT DELEGATION) ===== */
+    /* =============================
+       ADD CREDIT
+    ============================== */
 
-    transactionList.addEventListener("click", function (e) {
-        if (e.target.classList.contains("delete-btn")) {
+    creditForm.addEventListener("submit", function (e) {
+        e.preventDefault();
 
-            const index = e.target.getAttribute("data-index");
+        const account = document.getElementById("creditAccount").value;
+        const customer = document.getElementById("customerName").value;
+        const amount = parseFloat(document.getElementById("creditAmount").value);
+        const date = document.getElementById("creditDate").value;
+        const notes = document.getElementById("creditNotes").value;
 
-            if (confirm("Are you sure you want to delete this transaction?")) {
+        if (!account || !customer || !amount || amount <= 0 || !date) {
+            alert("Fill all required fields properly.");
+            return;
+        }
+
+        credits.push({
+            account,
+            customer,
+            amount,
+            date,
+            notes,
+            status: "Pending"
+        });
+
+        saveData();
+        renderCredits();
+
+        creditForm.reset();
+        creditModal.style.display = "none";
+    });
+
+    /* =============================
+       DELETE + MARK PAID
+    ============================== */
+
+    document.addEventListener("click", function (e) {
+
+        // Delete Transaction
+        if (e.target.classList.contains("delete-transaction")) {
+            const index = e.target.dataset.index;
+            if (confirm("Delete this transaction?")) {
                 transactions.splice(index, 1);
-                saveTransactions();
+                saveData();
                 renderTransactions();
             }
         }
+
+        // Delete Credit
+        if (e.target.classList.contains("delete-credit")) {
+            const index = e.target.dataset.index;
+            if (confirm("Delete this credit entry?")) {
+                credits.splice(index, 1);
+                saveData();
+                renderCredits();
+            }
+        }
+
+        // Mark Credit as Paid
+        if (e.target.classList.contains("mark-paid")) {
+            const index = e.target.dataset.index;
+            const credit = credits[index];
+
+            credit.status = "Paid";
+
+            // Automatically add income transaction
+            transactions.push({
+                account: credit.account,
+                type: "Income",
+                amount: credit.amount,
+                date: new Date().toISOString().split("T")[0],
+                notes: `Credit received from ${credit.customer}`
+            });
+
+            saveData();
+            renderCredits();
+            renderTransactions();
+        }
     });
 
-    /* ===== ACCOUNT FILTER ===== */
-
-    accountFilter.addEventListener("change", renderTransactions);
-
-    /* ===== EXPORT CSV (FILTERED DATA) ===== */
+    /* =============================
+       EXPORT CSV (FILTERED)
+    ============================== */
 
     exportBtn.addEventListener("click", function () {
 
-        const filteredTransactions = getFilteredTransactions();
+        const filtered = getFilteredTransactions();
 
-        if (filteredTransactions.length === 0) {
+        if (filtered.length === 0) {
             alert("No transactions to export.");
             return;
         }
 
-        let csvContent = "Account,Date,Type,Amount,Notes\n";
+        let csv = "Account,Date,Type,Amount,Notes\n";
 
-        filteredTransactions.forEach(transaction => {
-            csvContent += `${transaction.account},${transaction.date},${transaction.type},${transaction.amount},"${transaction.notes || ""}"\n`;
+        filtered.forEach(t => {
+            csv += `${t.account},${t.date},${t.type},${t.amount},"${t.notes || ""}"\n`;
         });
 
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
 
         const a = document.createElement("a");
         a.href = url;
-        a.download = "digica-cash-flow.csv";
+        a.download = "digica-transactions.csv";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
     });
 
-    /* ===== MODAL OPEN / CLOSE ===== */
+    /* =============================
+       MODAL CONTROLS
+    ============================== */
 
-    openFormBtn.addEventListener("click", function () {
-        formModal.style.display = "flex";
+    openTransactionBtn.addEventListener("click", () => {
+        transactionModal.style.display = "flex";
     });
 
-    closeFormBtn.addEventListener("click", function () {
-        formModal.style.display = "none";
+    closeTransactionBtn.addEventListener("click", () => {
+        transactionModal.style.display = "none";
     });
 
-    // Close modal if clicking outside content
-    formModal.addEventListener("click", function (e) {
-        if (e.target === formModal) {
-            formModal.style.display = "none";
+    openCreditBtn.addEventListener("click", () => {
+        creditModal.style.display = "flex";
+    });
+
+    closeCreditBtn.addEventListener("click", () => {
+        creditModal.style.display = "none";
+    });
+
+    window.addEventListener("click", function (e) {
+        if (e.target === transactionModal) {
+            transactionModal.style.display = "none";
+        }
+        if (e.target === creditModal) {
+            creditModal.style.display = "none";
         }
     });
 
+    accountFilter.addEventListener("change", function () {
+        renderTransactions();
+        renderCredits();
+    });
+
     renderTransactions();
+    renderCredits();
 
 });
